@@ -218,6 +218,7 @@ function ThreadManager() {
     this.processes = [];
     this.halos = [];
     this.wantsToPause = false; // single stepping support
+    this.debugProcess = null; // the process focused by the debugger
 }
 
 ThreadManager.prototype.pauseCustomHatBlocks = false;
@@ -632,6 +633,8 @@ ThreadManager.prototype.clickFrameFor = function (block) {
                         invocations can catch them
     flashingContext     for single stepping
     isInterrupted       boolean, indicates intra-step flashing of blocks
+    stepRequest         debugger: Step Into/Over/Out in progress, or null
+    isAtBreakpoint      debugger: boolean, paused by a breakpoint
     canBroadcast        boolean, used to control reentrancy & "when stopped"
 */
 
@@ -643,6 +646,7 @@ Process.prototype.isCaseInsensitive = true; // text comparison
 Process.prototype.enableHyperOps = true;
 Process.prototype.enableLiveCoding = false; // experimental
 Process.prototype.enableSingleStepping = false;
+Process.prototype.enableDebugging = true; // breakpoints, see debugger.js
 Process.prototype.enableCompiling = false; // experimental
 Process.prototype.flashTime = 0;
 Process.prototype.enableJS = false;
@@ -677,6 +681,8 @@ function Process(topBlock, receiver, onComplete, yieldFirst) {
     this.procedureCount = 0;
     this.flashingContext = null; // for single-stepping
     this.isInterrupted = false; // for single-stepping
+    this.stepRequest = null; // for debugging
+    this.isAtBreakpoint = false; // for debugging
     this.canBroadcast = true; // used to control "when I am stopped"
     this.isAnimated = false; // temporary - used to control yields for animation
     this.isGenericCondition = false; // used for displaying halos
@@ -1330,7 +1336,8 @@ Process.prototype.isAutoLambda = function (inputSlot) {
 Process.prototype.evaluateSequence = function (arr) {
     var pc = this.context.pc,
         outer = this.context.outerContext,
-        isCustomBlock = this.context.isCustomBlock;
+        isCustomBlock = this.context.isCustomBlock,
+        debugCallBlock = this.context.debugCallBlock;
     if (pc === (arr.length - 1)) { // tail call elimination
         this.context = new Context(
             this.context.parentContext,
@@ -1339,6 +1346,9 @@ Process.prototype.evaluateSequence = function (arr) {
             this.context.receiver
         );
         this.context.isCustomBlock = isCustomBlock;
+        // this Context still marks the same custom block call
+        this.context.debugCallBlock = debugCallBlock;
+        this.registerContextPush(); // bypassing pushContext()
     } else {
         if (pc >= arr.length) {
             this.popContext();
@@ -2145,6 +2155,7 @@ Process.prototype.evaluateCustomBlock = function () {
         outer.receiver
     );
     runnable.isCustomBlock = true;
+    runnable.debugCallBlock = block; // for the debugger's call stack
     this.context.parentContext = runnable;
 
     // passing parameters if any were passed
@@ -8557,6 +8568,7 @@ Process.prototype.pushContext = function (expression, outerContext) {
         this.context ? // check needed due to tail call elimination
                 this.context.receiver : this.homeContext.receiver
     );
+    this.registerContextPush();
 };
 
 Process.prototype.popContext = function () {
@@ -10352,6 +10364,7 @@ Process.prototype.reportDigitalReading = function (pin, booleanValue) {
     activeNote      audio oscillator for interpolated ops, don't persist
     activeSends		forked processes waiting to be completed
     isCustomBlock   marker for return ops
+    debugCallBlock  debugger: call site of a custom block, if isCustomBlock
     isCustomCommand marker for interpolated blocking reporters (reportURL)
     emptySlots      caches the number of empty slots for reification
     tag             string or number to optionally identify the Context,
@@ -10385,6 +10398,7 @@ function Context(
     this.activeAudio = null;
     this.activeNote = null;
     this.isCustomBlock = false; // marks the end of a custom block's stack
+    this.debugCallBlock = null; // debugger: the custom block's call site
     this.isCustomCommand = null; // used for ignoring URL reporters' results
     this.emptySlots = 0; // used for block reification
     this.tag = null;  // lexical catch-tag for custom blocks

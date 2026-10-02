@@ -81,7 +81,7 @@ BlockRemovalDialogMorph,TableMorph, isSnapObject, isRetinaEnabled, SliderMorph,
 disableRetinaSupport, enableRetinaSupport, isRetinaSupported, MediaRecorder,
 Animation, BoxMorph, BlockDialogMorph, RingMorph, Project, ZERO, BLACK, CLEAR,
 BlockVisibilityDialogMorph, ThreadManager, isString, SnapExtensions, snapEquals,
-HatBlockMorph, ZOOM*/
+HatBlockMorph, ZOOM, DebuggerMorph*/
 
 /*jshint esversion: 11*/
 
@@ -347,6 +347,7 @@ IDE_Morph.prototype.init = function (config) {
     this.corralBar = null;
     this.corral = null;
     this.zoomBar = null;
+    this.debugPanel = null;
 
     this.embedPlayButton = null;
     this.embedOverlay = null;
@@ -1054,6 +1055,7 @@ IDE_Morph.prototype.buildPanes = function () {
     this.createCorralBar();
     this.createCorral();
     this.createZoomBar();
+    this.createDebugger();
 };
 
 IDE_Morph.prototype.createLogo = function () {
@@ -2815,6 +2817,15 @@ IDE_Morph.prototype.createZoomBar = function () {
     this.zoomBar.fixLayout();
 };
 
+IDE_Morph.prototype.createDebugger = function () {
+    // assumes the corral has already been created
+    if (this.debugPanel) {
+        this.debugPanel.destroy();
+    }
+    this.debugPanel = new DebuggerMorph(this);
+    this.add(this.debugPanel);
+};
+
 // IDE_Morph layout
 
 IDE_Morph.prototype.fixLayout = function (situation) {
@@ -2998,6 +3009,16 @@ IDE_Morph.prototype.fixLayout = function (situation) {
             this.corral.setWidth(this.stage.width());
             this.corral.setHeight(this.bottom() - this.corral.top() - border);
             this.corral.fixLayout();
+        }
+
+        // debugger panel, shown in place of the corral during a session
+        if (this.debugPanel.isVisible) {
+            this.debugPanel.setPosition(this.corralBar.position());
+            this.debugPanel.setExtent(new Point(
+                this.corralBar.width(),
+                this.bottom() - this.corralBar.top() - border
+            ));
+            this.debugPanel.fixLayout();
         }
     }
 
@@ -3601,6 +3622,10 @@ IDE_Morph.prototype.toggleSingleStepping = function () {
     this.controlBar.refreshSlider();
 };
 
+IDE_Morph.prototype.toggleDebugging = function () {
+    this.debugPanel.toggleDebugging();
+};
+
 IDE_Morph.prototype.toggleCameraSupport = function () {
     CamSnapshotDialogMorph.prototype.enableCamera =
         !CamSnapshotDialogMorph.prototype.enableCamera;
@@ -3635,7 +3660,11 @@ IDE_Morph.prototype.runScripts = function () {
 
 IDE_Morph.prototype.togglePauseResume = function () {
     if (this.stage.threads.isPaused()) {
-        this.stage.threads.resumeAll(this.stage);
+        if (this.stage.threads.debugProcess) {
+            this.stage.threads.debugContinue(this.stage);
+        } else {
+            this.stage.threads.resumeAll(this.stage);
+        }
     } else {
         this.stage.threads.pauseAll(this.stage);
     }
@@ -4889,6 +4918,14 @@ IDE_Morph.prototype.settingsMenu = function () {
         Process.prototype.enableSingleStepping,
         'uncheck to turn off\nvisible stepping',
         'check to turn on\n visible stepping (slow)',
+        false
+    );
+    addPreference(
+        'Debugger',
+        'toggleDebugging',
+        Process.prototype.enableDebugging,
+        'uncheck to disable breakpoints\nand the debugger panel',
+        'check to enable setting breakpoints\nand using the debugger panel',
         false
     );
     addPreference(

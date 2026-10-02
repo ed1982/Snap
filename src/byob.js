@@ -3436,8 +3436,10 @@ function BlockEditorMorph(definition, target) {
 
 BlockEditorMorph.prototype.init = function (definition, target) {
     var scripts, proto, scriptsFrame, block, comment, prim,
+        stage = target ? target.parentThatIsA(StageMorph) : null,
         isLive = Process.prototype.enableLiveCoding ||
-            Process.prototype.enableSingleStepping;
+            Process.prototype.enableSingleStepping ||
+            (stage !== null && stage.threads.isDebugging());
 
     // additional properties:
     this.definition = definition;
